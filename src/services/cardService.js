@@ -24,3 +24,6 @@ export const updateCard = (id, cardData) => {
 export const deleteCard = (id) => {
   return api.delete(`/cards/${id}`);
 };
+export const getThemes = () => {
+  return api.get('/cards/themes');
+};

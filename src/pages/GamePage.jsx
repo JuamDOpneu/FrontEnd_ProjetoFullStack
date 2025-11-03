@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-// A CORREÇÃO ESTÁ AQUI NA LINHA ABAIXO:
-import { getCards } from '../services/cardService.js';
+import { getCards } from '../services/cardService.js'; // Corrigido com .js
 import MemoryCardComponent from '../components/MemoryCardComponent';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Button from '../components/Button';
@@ -14,45 +13,77 @@ function GamePage() {
   const [cards, setCards] = useState([]);
   const [flipped, setFlipped] = useState([]); 
   const [matched, setMatched] = useState([]); 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [moves, setMoves] = useState(0); // Funcionalidade extra
+  const [moves, setMoves] = useState(0);
 
-  const loadGame = async () => {
-    setLoading(true);
+  // Novos estados para a seleção de tema
+  const [gameState, setGameState] = useState('loading'); // 'loading', 'themeSelection', 'playing', 'won'
+  const [availableThemes, setAvailableThemes] = useState([]);
+  const [selectedTheme, setSelectedTheme] = useState(null);
+  const [error, setError] = useState(null);
+
+  // 1. Efeito para buscar os temas disponíveis na primeira carga
+  useEffect(() => {
+    const loadThemes = async () => {
+      setGameState('loading');
+      setError(null);
+      try {
+        // Busca TODAS as cartas para descobrir os temas
+        const response = await getCards();
+        if (response.data.length === 0) {
+          setError("Nenhuma carta cadastrada. Adicione cartas na área de Admin.");
+        } else {
+          // Filtra temas únicos usando um Set
+          const uniqueThemes = [...new Set(response.data.map(card => card.theme))];
+          setAvailableThemes(uniqueThemes);
+          setGameState('themeSelection');
+        }
+      } catch (err) {
+        setError("Falha ao carregar temas. O back-end está rodando?");
+        setGameState('error');
+      }
+    };
+    
+    loadThemes();
+  }, []); // Roda apenas uma vez
+
+  // 2. Função para iniciar o jogo DEPOIS que um tema é selecionado
+  const startGame = async (theme) => {
+    setGameState('loading');
+    setSelectedTheme(theme);
     setError(null);
     setCards([]);
     setFlipped([]);
     setMatched([]);
     setMoves(0);
+
     try {
-      const response = await getCards(); // Pega todas as cartas
+      // Busca apenas as cartas do tema selecionado
+      const response = await getCards({ theme: theme });
       
-      if (response.data.length === 0) {
-        setError("Nenhuma carta cadastrada. Adicione cartas na área de Admin.");
-        setLoading(false);
-        return;
+      // Verifica se há cartas suficientes (precisa de pelo menos 2)
+      if (response.data.length < 2) {
+         setError(`O tema "${theme}" não tem cartas suficientes. Cadastre mais cartas!`);
+         setGameState('themeSelection');
+         return;
       }
-      
-      // Pega 8 pares (ou menos se não houver)
+
+      // Pega até 8 cartas para formar 8 pares (16 cartas)
       const pairs = response.data.slice(0, 8);
       const gameDeck = [...pairs, ...pairs].map((card, i) => ({
         ...card,
-        uniqueId: i, // ID único para a key do React
+        uniqueId: i, 
       }));
       setCards(shuffleArray(gameDeck));
+      setGameState('playing');
+
     } catch (err) {
-      setError("Falha ao carregar o jogo. O back-end está rodando?");
+      setError("Falha ao carregar o jogo.");
+      setGameState('error');
     }
-    setLoading(false);
   };
 
-  useEffect(() => {
-    loadGame();
-  }, []);
-
+  // 3. Lógica de clique no card
   const handleCardClick = (index) => {
-    // Não faz nada se já tem 2 viradas, ou clicou na mesma, ou já deu match
     if (flipped.length === 2 || flipped.includes(index) || matched.includes(cards[index].name)) {
       return; 
     }
@@ -61,14 +92,18 @@ function GamePage() {
     setFlipped(newFlipped);
 
     if (newFlipped.length === 2) {
-      setMoves(moves + 1); // Incrementa contador de jogadas
+      setMoves(moves + 1); 
       const [firstIndex, secondIndex] = newFlipped;
       if (cards[firstIndex].name === cards[secondIndex].name) {
-        // MATCH
-        setMatched([...matched, cards[firstIndex].name]);
+        const newMatched = [...matched, cards[firstIndex].name];
+        setMatched(newMatched);
         setFlipped([]);
+        
+        // Checa se venceu
+        if (newMatched.length === cards.length / 2) {
+          setGameState('won');
+        }
       } else {
-        // NO MATCH
         setTimeout(() => {
           setFlipped([]);
         }, 1000);
@@ -76,31 +111,75 @@ function GamePage() {
     }
   };
 
-  if (loading) return <LoadingSpinner />;
-  
-  const isWin = cards.length > 0 && matched.length === cards.length / 2;
+  // 4. Função para voltar à seleção de temas
+  const resetGame = () => {
+    setGameState('themeSelection');
+    setSelectedTheme(null);
+    setCards([]);
+  };
+
+  // 5. Renderização condicional
+  const renderContent = () => {
+    if (gameState === 'loading') {
+      return <LoadingSpinner />;
+    }
+    
+    if (error) {
+      return <p className="error-message">{error}</p>;
+    }
+    
+    if (gameState === 'themeSelection') {
+      return (
+        <div className="theme-selection">
+          <h2>Escolha um Tema para Jogar!</h2>
+          <div className="theme-buttons">
+            {availableThemes.length > 0 ? (
+              availableThemes.map(theme => (
+                <Button key={theme} onClick={() => startGame(theme)}>
+                  {theme}
+                </Button>
+              ))
+            ) : (
+              <p>Nenhum tema encontrado. Cadastre cartas no Admin.</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+    
+    if (gameState === 'playing' || gameState === 'won') {
+      return (
+        <div>
+          <div style={{display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem'}}>
+            <Button onClick={resetGame} variant="secondary">Voltar (Escolher Tema)</Button>
+            <p style={{margin: 0, fontWeight: 'bold', fontSize: '1.2rem'}}>Tema: {selectedTheme}</p>
+            <p style={{margin: 0, fontWeight: 'bold', fontSize: '1.2rem'}}>Jogadas: {moves}</p>
+          </div>
+          
+          {gameState === 'won' && (
+            <h3 className="success-message">Parabéns, você venceu em {moves} jogadas!</h3>
+          )}
+
+          <div className="game-board">
+            {cards.map((card, index) => (
+              <MemoryCardComponent
+                key={card.uniqueId}
+                card={card}
+                isFlipped={flipped.includes(index) || matched.includes(card.name)}
+                onClick={() => handleCardClick(index)}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+    
+    return null; // Caso de erro
+  };
 
   return (
     <div className="game-page">
-      <h2>Jogo da Memória</h2>
-      <div style={{display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem'}}>
-        <Button onClick={loadGame}>Reiniciar Jogo</Button>
-        <p style={{margin: 0}}>Jogadas: {moves}</p>
-      </div>
-      
-      {isWin && <h3 className="success-message">Parabéns, você venceu!</h3>}
-      {error && <p className="error-message">{error}</p>}
-
-      <div className="game-board">
-        {cards.map((card, index) => (
-          <MemoryCardComponent
-            key={card.uniqueId}
-            card={card}
-            isFlipped={flipped.includes(index) || matched.includes(card.name)}
-            onClick={() => handleCardClick(index)}
-          />
-        ))}
-      </div>
+      {renderContent()}
     </div>
   );
 }
