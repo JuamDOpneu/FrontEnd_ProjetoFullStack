@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 // Importamos a nova função getThemes
-import { getCards, deleteCard, getThemes } from '../services/cardService.js'; 
+import { getCards, deleteCard, getDistinctThemes } from '../services/cardService.js';
 import Button from '../components/Button'; 
 import LoadingSpinner from '../components/LoadingSpinner'; 
 

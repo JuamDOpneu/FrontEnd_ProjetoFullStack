@@ -6,7 +6,7 @@ function Navigation() {
     <nav className="navigation">
       <NavLink to="/" end>Home</NavLink>
       <NavLink to="/game">Jogar</NavLink>
-      <NavLink to="/admin">Admin (Gerenciar Cartas)</NavLink>
+      <NavLink to="/admin">Gerenciar Cartas</NavLink>
     </nav>
   );
 }

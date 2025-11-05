@@ -1,8 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { getCards } from '../services/cardService.js'; // Corrigido com .js
+import React, { useState, useEffect, useRef } from 'react';
+import { getDistinctThemes, getCards } from '../services/cardService.js';
 import MemoryCardComponent from '../components/MemoryCardComponent';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Button from '../components/Button';
+
+// --- CONFIGURAÇÃO DOS NÍVEIS ---
+const GAME_CONFIG = {
+  easy: { pairs: 6, label: 'Fácil (6 Pares)' },
+  medium: { pairs: 8, label: 'Médio (8 Pares)' },
+  hard: { pairs: 10, label: 'Difícil (10 Pares)' },
+};
+// ------------------------------
 
 // Função para embaralhar
 const shuffleArray = (array) => {
@@ -15,11 +23,18 @@ function GamePage() {
   const [matched, setMatched] = useState([]); 
   const [moves, setMoves] = useState(0);
 
-  // Novos estados para a seleção de tema
-  const [gameState, setGameState] = useState('loading'); // 'loading', 'themeSelection', 'playing', 'won'
+  // --- Novos Estados ---
+  const [gameState, setGameState] = useState('loading'); // 'loading', 'themeSelection', 'difficultySelection', 'playing', 'won'
   const [availableThemes, setAvailableThemes] = useState([]);
   const [selectedTheme, setSelectedTheme] = useState(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState(null);
   const [error, setError] = useState(null);
+  
+  // Estados do Timer
+  const [timer, setTimer] = useState(0);
+  // Usamos useRef para guardar o ID do intervalo, para não causar re-renderizações
+  const timerIntervalRef = useRef(null); 
+  // --------------------
 
   // 1. Efeito para buscar os temas disponíveis na primeira carga
   useEffect(() => {
@@ -27,14 +42,11 @@ function GamePage() {
       setGameState('loading');
       setError(null);
       try {
-        // Busca TODAS as cartas para descobrir os temas
-        const response = await getCards();
+        const response = await getDistinctThemes(); // Chama a API de temas
         if (response.data.length === 0) {
           setError("Nenhuma carta cadastrada. Adicione cartas na área de Admin.");
         } else {
-          // Filtra temas únicos usando um Set
-          const uniqueThemes = [...new Set(response.data.map(card => card.theme))];
-          setAvailableThemes(uniqueThemes);
+          setAvailableThemes(response.data);
           setGameState('themeSelection');
         }
       } catch (err) {
@@ -46,10 +58,25 @@ function GamePage() {
     loadThemes();
   }, []); // Roda apenas uma vez
 
-  // 2. Função para iniciar o jogo DEPOIS que um tema é selecionado
-  const startGame = async (theme) => {
-    setGameState('loading');
+  // 2. Limpa o timer quando o componente é desmontado
+  useEffect(() => {
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // 3. Função chamada ao selecionar o TEMA
+  const handleThemeSelect = (theme) => {
     setSelectedTheme(theme);
+    setGameState('difficultySelection'); // Avança para a tela de dificuldade
+  };
+
+  // 4. Função chamada ao selecionar a DIFICULDADE (inicia o jogo)
+  const startGame = async (difficultyKey) => {
+    setGameState('loading');
+    setSelectedDifficulty(difficultyKey); // Salva a dificuldade
     setError(null);
     setCards([]);
     setFlipped([]);
@@ -57,24 +84,34 @@ function GamePage() {
     setMoves(0);
 
     try {
-      // Busca apenas as cartas do tema selecionado
-      const response = await getCards({ theme: theme });
+      const { pairs } = GAME_CONFIG[difficultyKey];
+      const response = await getCards({ theme: selectedTheme }); // Busca cartas do tema
       
-      // Verifica se há cartas suficientes (precisa de pelo menos 2)
-      if (response.data.length < 2) {
-         setError(`O tema "${theme}" não tem cartas suficientes. Cadastre mais cartas!`);
-         setGameState('themeSelection');
+      // Verifica se há cartas suficientes para a dificuldade
+      if (response.data.length < pairs) {
+         setError(`O tema "${selectedTheme}" não tem cartas suficientes (${pairs}) para este modo. Cadastre mais cartas ou escolha "Fácil".`);
+         setGameState('difficultySelection'); // Volta para a tela de dificuldade
          return;
       }
 
-      // Pega até 8 cartas para formar 8 pares (16 cartas)
-      const pairs = response.data.slice(0, 8);
-      const gameDeck = [...pairs, ...pairs].map((card, i) => ({
+      // Pega o número de pares necessários
+      const pairsDeck = response.data.slice(0, pairs);
+      const gameDeck = [...pairsDeck, ...pairsDeck].map((card, i) => ({
         ...card,
         uniqueId: i, 
       }));
       setCards(shuffleArray(gameDeck));
       setGameState('playing');
+
+      // --- Inicia o Timer ---
+      setTimer(0);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+      timerIntervalRef.current = setInterval(() => {
+        setTimer(prev => prev + 1);
+      }, 1000);
+      // ---------------------
 
     } catch (err) {
       setError("Falha ao carregar o jogo.");
@@ -82,9 +119,10 @@ function GamePage() {
     }
   };
 
-  // 3. Lógica de clique no card
+  // 5. Lógica de clique no card (atualizada)
   const handleCardClick = (index) => {
-    if (flipped.length === 2 || flipped.includes(index) || matched.includes(cards[index].name)) {
+    // Não faz nada se o jogo não está ativo, ou se já tem 2 viradas, etc.
+    if (gameState !== 'playing' || flipped.length === 2 || flipped.includes(index) || matched.includes(cards[index].name)) {
       return; 
     }
 
@@ -102,6 +140,12 @@ function GamePage() {
         // Checa se venceu
         if (newMatched.length === cards.length / 2) {
           setGameState('won');
+          // --- Para o Timer ---
+          if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+          }
+          // --------------------
         }
       } else {
         setTimeout(() => {
@@ -111,23 +155,31 @@ function GamePage() {
     }
   };
 
-  // 4. Função para voltar à seleção de temas
-  const resetGame = () => {
+  // 6. Função para voltar à seleção de temas
+  const resetToThemeSelection = () => {
+    // Para o timer se estiver rodando
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
     setGameState('themeSelection');
     setSelectedTheme(null);
+    setSelectedDifficulty(null);
     setCards([]);
+    setError(null);
   };
 
-  // 5. Renderização condicional
+  // 7. Renderização (o que o usuário vê)
   const renderContent = () => {
     if (gameState === 'loading') {
       return <LoadingSpinner />;
     }
     
-    if (error) {
+    if (error && gameState !== 'difficultySelection') {
       return <p className="error-message">{error}</p>;
     }
     
+    // --- TELA 1: SELEÇÃO DE TEMA ---
     if (gameState === 'themeSelection') {
       return (
         <div className="theme-selection">
@@ -135,7 +187,7 @@ function GamePage() {
           <div className="theme-buttons">
             {availableThemes.length > 0 ? (
               availableThemes.map(theme => (
-                <Button key={theme} onClick={() => startGame(theme)}>
+                <Button key={theme} onClick={() => handleThemeSelect(theme)}>
                   {theme}
                 </Button>
               ))
@@ -146,20 +198,40 @@ function GamePage() {
         </div>
       );
     }
+
+    // --- TELA 2: SELEÇÃO DE DIFICULDADE ---
+    if (gameState === 'difficultySelection') {
+      return (
+        <div className="theme-selection">
+          <h2>Tema: {selectedTheme}</h2>
+          <h3>Escolha a Dificuldade:</h3>
+          {/* Mostra o erro de "cartas insuficientes" aqui */}
+          {error && <p className="error-message">{error}</p>}
+          <div className="theme-buttons">
+            {Object.keys(GAME_CONFIG).map(key => (
+              <Button key={key} onClick={() => startGame(key)}>
+                {GAME_CONFIG[key].label}
+              </Button>
+            ))}
+          </div>
+          <Button onClick={resetToThemeSelection} variant="secondary" style={{marginTop: '2rem'}}>
+            Voltar (Escolher Tema)
+          </Button>
+        </div>
+      );
+    }
     
-    if (gameState === 'playing' || gameState === 'won') {
+    // --- TELA 3: JOGANDO ---
+    if (gameState === 'playing') {
       return (
         <div>
-          <div style={{display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem'}}>
-            <Button onClick={resetGame} variant="secondary">Voltar (Escolher Tema)</Button>
-            <p style={{margin: 0, fontWeight: 'bold', fontSize: '1.2rem'}}>Tema: {selectedTheme}</p>
-            <p style={{margin: 0, fontWeight: 'bold', fontSize: '1.2rem'}}>Jogadas: {moves}</p>
+          <div style={{display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center', marginBottom: '1rem'}}>
+            <Button onClick={resetToThemeSelection} variant="secondary">Voltar (Mudar Tema)</Button>
+            <h3 style={{margin: 0}}>Tema: {selectedTheme}</h3>
+            <h3 style={{margin: 0, color: '#007bff'}}>Tempo: {timer}s</h3>
+            <h3 style={{margin: 0, color: '#dc3545'}}>Jogadas: {moves}</h3>
           </div>
           
-          {gameState === 'won' && (
-            <h3 className="success-message">Parabéns, você venceu em {moves} jogadas!</h3>
-          )}
-
           <div className="game-board">
             {cards.map((card, index) => (
               <MemoryCardComponent
@@ -170,6 +242,24 @@ function GamePage() {
               />
             ))}
           </div>
+        </div>
+      );
+    }
+
+    // --- TELA 4: VITÓRIA ---
+    if (gameState === 'won') {
+       return (
+        <div className="theme-selection"> {/* Reutiliza o estilo de centralizar */}
+          <h2 className="success-message">Parabéns, você venceu!</h2>
+          <h3>Estatísticas da Partida:</h3>
+          <p><strong>Tema:</strong> {selectedTheme}</p>
+          <p><strong>Dificuldade:</strong> {GAME_CONFIG[selectedDifficulty].label}</p>
+          <p><strong>Tempo Final:</strong> {timer} segundos</p>
+          <p><strong>Total de Jogadas:</strong> {moves}</p>
+          <br/>
+          <Button onClick={resetToThemeSelection} variant="primary">
+            Jogar Novamente
+          </Button>
         </div>
       );
     }

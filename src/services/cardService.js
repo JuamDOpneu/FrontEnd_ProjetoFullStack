@@ -1,4 +1,4 @@
-import api from './api';
+import api from './api.js';
 
 // GET (Todos ou com filtro)
 export const getCards = (params) => {
@@ -24,6 +24,9 @@ export const updateCard = (id, cardData) => {
 export const deleteCard = (id) => {
   return api.delete(`/cards/${id}`);
 };
-export const getThemes = () => {
+
+// --- ADICIONE ESTA NOVA FUNÇÃO ---
+// Ela chama o endpoint que criamos no back-end
+export const getDistinctThemes = () => {
   return api.get('/cards/themes');
 };
