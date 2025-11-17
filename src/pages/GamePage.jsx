@@ -214,8 +214,8 @@ function GamePage() {
               </Button>
             ))}
           </div>
-          <Button onClick={resetToThemeSelection} variant="secondary" style={{marginTop: '2rem'}}>
-            Voltar (Escolher Tema)
+          <Button onClick={resetToThemeSelection} variant="secondary" style={{marginTop: '2.0rem'}}>
+            Voltar
           </Button>
         </div>
       );
@@ -225,7 +225,7 @@ function GamePage() {
     if (gameState === 'playing') {
       return (
         <div>
-          <div style={{display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center', marginBottom: '1rem'}}>
+          <div style={{display: 'flex', flexWrap: 'wrap', gap: '2.0 rem', alignItems: 'center', marginBottom: '1rem'}}>
             <Button onClick={resetToThemeSelection} variant="secondary">Voltar (Mudar Tema)</Button>
             <h3 style={{margin: 0}}>Tema: {selectedTheme}</h3>
             <h3 style={{margin: 0, color: '#007bff'}}>Tempo: {timer}s</h3>

@@ -16,6 +16,20 @@ function AdminCardFormPage() {
   const { cardId } = useParams(); // Pega o ID da URL
   const isEditing = Boolean(cardId);
 
+
+
+  const handleImageUpload = (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      // Atualiza o estado com a string gigante da imagem
+      setFormData({ ...formData, imageUrl: reader.result });
+    };
+    reader.readAsDataURL(file);
+  }
+};
+
   useEffect(() => {
     // Se está em modo de edição, busca os dados da carta
     if (isEditing) {
@@ -82,14 +96,28 @@ function AdminCardFormPage() {
           onChange={handleChange}
           placeholder="Ex: Animais"
         />
-        <Input
-          label="URL da Imagem"
-          name="imageUrl"
-          value={formData.imageUrl}
-          onChange={handleChange}
-          placeholder="https://exemplo.com/imagem.png"
-        />
-        
+       <div className="form-group">
+    <label>Imagem da Carta</label>
+    
+    {/* 👇 Substitua o input de texto antigo por este: */}
+    <input 
+        type="file" 
+        accept="image/*" 
+        onChange={handleImageUpload} 
+        style={{ display: 'block', margin: '10px 0' }}
+    />
+
+    {/* 👇 (Opcional) Mostra a imagem se ela já foi carregada */}
+    {formData.imageUrl && (
+        <div style={{ marginTop: '10px' }}>
+            <img 
+                src={formData.imageUrl} 
+                alt="Preview" 
+                style={{ width: '100px', height: '100px', objectFit: 'cover', border: '1px solid #ddd' }} 
+            />
+        </div>
+    )}
+</div>
         <Button type="submit" disabled={loading}>
           {loading ? 'Salvando...' : 'Salvar'}
         </Button>

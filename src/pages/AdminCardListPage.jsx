@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-// Importamos a nova função getThemes
 import { getCards, deleteCard, getDistinctThemes } from '../services/cardService.js';
 import Button from '../components/Button'; 
 import LoadingSpinner from '../components/LoadingSpinner'; 
@@ -10,29 +9,29 @@ function AdminCardListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Novos estados para o filtro de temas
-  const [themes, setThemes] = useState([]); // Armazena a lista de temas do banco
-  const [selectedTheme, setSelectedTheme] = useState(''); // Armazena o tema selecionado
+  const [themes, setThemes] = useState([]); 
+  const [selectedTheme, setSelectedTheme] = useState(''); 
 
   // Função para buscar os dados (cartas E temas)
   const fetchApiData = async (themeQuery = '') => {
     setLoading(true);
     setError(null);
     try {
-      // Cria um objeto de query só se um tema for selecionado
       const query = themeQuery ? { theme: themeQuery } : {};
       
-      // 1. Busca as cartas (filtradas ou não)
+      // 1. Busca as cartas
       const cardsResponse = await getCards(query);
       setCards(cardsResponse.data);
       
-      // 2. Busca a lista de temas únicos (só na primeira vez)
+      // 2. Busca a lista de temas (CORREÇÃO AQUI)
+      // Verifica se precisa buscar os temas (se a lista estiver vazia ou se for uma recarga forçada)
       if (themes.length === 0) {
-        const themesResponse = await getThemes();
+        const themesResponse = await getDistinctThemes(); // Nome corrigido
         setThemes(themesResponse.data);
       }
       
     } catch (err) {
+      console.error(err);
       setError('Falha ao buscar os dados. Verifique se o back-end está rodando.');
     } finally {
       setLoading(false);
@@ -41,38 +40,37 @@ function AdminCardListPage() {
 
   // Roda na primeira vez que a página carrega
   useEffect(() => {
-    fetchApiData(); // Carrega tudo na primeira vez
-  }, []); // Dependência vazia
+    fetchApiData(); 
+  }, []); 
 
-  // Requisito R5: Implementar busca ou filtro
   const handleFilter = () => {
-    // Passa o tema selecionado no dropdown para a função de busca
     fetchApiData(selectedTheme);
   };
   
   const handleClearFilter = () => {
-    setSelectedTheme(''); // Limpa o dropdown
-    fetchApiData(); // Busca todas as cartas
+    setSelectedTheme(''); 
+    fetchApiData(); // Busca todas as cartas sem filtro
   };
 
-  // Requisito R6: Permitir exclusão
   const handleDelete = async (id) => {
     if (window.confirm('Tem certeza que deseja excluir esta carta?')) {
       try {
         await deleteCard(id); 
-        setCards(cards.filter(card => card.id !== id));
+        // Remove a carta da lista local visualmente para não precisar recarregar tudo
+        setCards(prevCards => prevCards.filter(card => card.id !== id));
         
-        // Opcional: Recarregar os temas caso o último de um tema seja excluído
-        const themesResponse = await getThemes();
+        // Atualiza a lista de temas (caso tenha excluído o último item de um tema)
+        // (CORREÇÃO AQUI TAMBÉM)
+        const themesResponse = await getDistinctThemes(); 
         setThemes(themesResponse.data);
 
       } catch (err) {
+        console.error(err);
         setError('Falha ao excluir a carta.');
       }
     }
   };
 
-  // Requisito R7: Feedback visual (loading/erro)
   if (loading && cards.length === 0) return <LoadingSpinner />;
 
   return (
@@ -82,18 +80,16 @@ function AdminCardListPage() {
         <Button>Nova Carta</Button>
       </Link>
       
-      {/* Requisito R5: Filtro (Agora com Dropdown) */}
       <div className="filter-section">
-        
-        {/* Este é o novo <select> */}
         <select 
           value={selectedTheme} 
           onChange={(e) => setSelectedTheme(e.target.value)}
-          style={{ padding: '0.75rem', borderRadius: '50px', border: '2px solid #ccc' }}
+          style={{ padding: '0.75rem', borderRadius: '5px', border: '1px solid #ccc', marginRight: '10px' }}
         >
-          <option value=""> Todos os Temas</option>
-          {themes.map(theme => (
-            <option key={theme} value={theme}>
+          <option value="">Todos os Temas</option>
+          {themes.map((theme, index) => (
+            // Adicionei index como fallback da key caso o tema seja repetido ou nulo
+            <option key={theme || index} value={theme}>
               {theme}
             </option>
           ))}
@@ -105,7 +101,6 @@ function AdminCardListPage() {
       
       {error && <p className="error-message">{error}</p>}
 
-      {/* Requisito R4: Exibir lista de entidades */}
       <table className="data-table">
         <thead>
           <tr>
@@ -120,7 +115,13 @@ function AdminCardListPage() {
             <tr key={card.id}>
               <td>{card.name}</td>
               <td>{card.theme}</td>
-              <td><img src={card.imageUrl} alt={card.name} /></td>
+              <td>
+                <img 
+                  src={card.imageUrl} 
+                  alt={card.name} 
+                  style={{ width: '50px', height: '50px', objectFit: 'cover' }} 
+                />
+              </td>
               <td>
                 <Link to={`/admin/edit/${card.id}`}>
                   <Button variant="secondary">Editar</Button>
